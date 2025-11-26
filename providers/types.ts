@@ -139,5 +139,6 @@ export type ProviderContext = {
     hubcloudExtracter: (link: string, signal: AbortSignal) => Promise<Stream[]>;
     superVideoExtractor: (data: any) => Promise<string>;
     gdFlixExtracter: (link: string, signal: AbortSignal) => Promise<Stream[]>;
+    extralinkExtractor: (link: string, signal: AbortSignal) => Promise<Stream[]>;
   };
 };
