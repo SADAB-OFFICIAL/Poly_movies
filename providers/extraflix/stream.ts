@@ -17,12 +17,15 @@ export const getStream = async function ({
   providerContext: ProviderContext;
 }): Promise<Stream[]> {
   const { extractors, axios, cheerio } = providerContext;
-  const { hubcloudExtracter, gdFlixExtracter } = extractors;
+  const { hubcloudExtracter, gdFlixExtracter, extralinkExtractor } = extractors;
 
   try {
     console.log("ExtraFlix Stream Link:", link);
 
-    // 1. Direct Supported Links
+    // 1. Direct Supported Links (Check for ExtraLink/DotFlix)
+    if (link.includes("extralink.ink") || link.includes("dotflix.cfd") || link.includes("new3.extralink")) {
+        return await extralinkExtractor(link, signal);
+    }
     if (link.includes("hubcloud") || link.includes("hubdrive")) {
       return await hubcloudExtracter(link, signal);
     }
@@ -31,20 +34,23 @@ export const getStream = async function ({
     }
 
     // 2. Resolving Redirect/Landing Pages
-    // ExtraFlix links usually go to a landing page with "Click to Verify" or "Download"
     const res = await axios.get(link, { headers, signal });
     const $ = cheerio.load(res.data);
 
-    // Find the main button link (often classed as btn-success or contains HubCloud)
+    // Try to find various download buttons
     let targetLink = 
         $('a:contains("HubCloud")').attr('href') || 
         $('a:contains("V-Cloud")').attr('href') ||
         $('a:contains("Download Link")').attr('href') ||
-        $('.btn-success').attr('href');
+        $('.btn-success').attr('href') ||
+        $('a:contains("Generate Download Link")').attr('href'); 
 
     if (targetLink) {
       console.log("ExtraFlix Resolved Target:", targetLink);
       
+      if (targetLink.includes("extralink.ink") || targetLink.includes("dotflix.cfd") || targetLink.includes("new3.extralink")) {
+          return await extralinkExtractor(targetLink, signal);
+      }
       if (targetLink.includes("hubcloud") || targetLink.includes("hubdrive")) {
         return await hubcloudExtracter(targetLink, signal);
       }
@@ -53,8 +59,7 @@ export const getStream = async function ({
       }
     }
 
-    // If no specific extractor matches, try passing the resolved link (or original) to HubCloud extractor
-    // as it handles many generic file host wrappers.
+    // Last resort: try generic extractor on the resolved target or original link
     return await hubcloudExtracter(targetLink || link, signal);
 
   } catch (err) {
