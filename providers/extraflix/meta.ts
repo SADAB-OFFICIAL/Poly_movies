@@ -3,8 +3,9 @@ import { Info, Link, ProviderContext } from "../types";
 const headers = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-  "Referer": "https://google.com"
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+  Referer: "https://google.com",
 };
 
 export const getMeta = async function ({
@@ -19,155 +20,141 @@ export const getMeta = async function ({
     const res = await axios.get(link, { headers });
     const $ = cheerio.load(res.data);
 
-    const contentDiv = $(".entry-content");
+    // --- 1. Title Extraction (Robust Strategy) ---
+    // Priority: OG Meta Tag > H1 > Title Tag
+    let rawTitle =
+      $('meta[property="og:title"]').attr("content") ||
+      $("h1.entry-title").text().trim() ||
+      $("h1").text().trim() ||
+      $("title").text().trim() ||
+      "";
 
-    // --- 1. Title Extraction (Improved) ---
-    // Try multiple selectors to ensure we get the title
-    let title = $("h1.entry-title").text().trim(); 
-    
-    // Cleanup title (Remove "Download", "[Hindi]", "480p", year, etc. for cleaner display)
-    // Example input: "Dynamite Kiss Season 1 (2025) [Hindi-Korean]..."
-    // Desired: "Dynamite Kiss Season 1"
-    let cleanTitle = title
+    // Clean the title
+    // Removes: "Download", Year like (2024), [Quality], etc.
+    let title = rawTitle
       .replace(/^Download\s*/i, "")
-      .replace(/\[.*?\]/g, "") // Remove [Hindi-English] etc
       .replace(/\(.*?\)/g, "") // Remove (2025)
-      .replace(/(1080p|720p|480p|4k|uhd|hevc|web-dl|esub).*/i, "") // Remove technical specs
+      .replace(/\[.*?\]/g, "") // Remove [Hindi]
+      .replace(/ExtraFlix/i, "")
       .trim();
 
     // --- 2. Image Extraction ---
     let image =
-      contentDiv.find("img").first().attr("data-src") ||
-      contentDiv.find("img").first().attr("src") ||
-      $(".post-thumbnail img").attr("src") ||
+      $('meta[property="og:image"]').attr("content") ||
+      $(".entry-content img").first().attr("src") ||
       "";
 
     // --- 3. Type Detection ---
-    // Check title or content for keywords
-    const isSeries = /season|episode/i.test(title) || /web series/i.test(title);
+    const isSeries =
+      /season|episode|web series/i.test(rawTitle) ||
+      $(".entry-content").text().toLowerCase().includes("season 1");
     const type = isSeries ? "series" : "movie";
 
     // --- 4. Synopsis Extraction ---
     let synopsis = "";
-    // Look for "Storyline" or "Plot" bold text and get the next paragraph
-    $("strong, h3, h4, h5, span").each((_, el) => {
-      const text = $(el).text().toLowerCase();
-      if (text.includes("storyline") || text.includes("plot") || text.includes("description")) {
-        // Try next sibling, or parent's next sibling
-        synopsis = $(el).parent().next("p").text().trim() || $(el).next("p").text().trim();
+    // Try finding paragraphs that look like descriptions
+    $(".entry-content p").each((_, el) => {
+      const text = $(el).text().trim();
+      if (
+        text.length > 50 &&
+        !text.toLowerCase().includes("download") &&
+        !text.toLowerCase().includes("join")
+      ) {
+        synopsis = text;
+        return false; // Break on first match
       }
     });
-    // Fallback: First generic paragraph with sufficient length
-    if (!synopsis) {
-      contentDiv.find("p").each((_, el) => {
-        const text = $(el).text().trim();
-        if (text.length > 50 && !text.toLowerCase().includes("join") && !text.toLowerCase().includes("telegram")) {
-          synopsis = text;
-          return false; // break loop
-        }
-      });
-    }
 
-    // --- 5. Link Extraction (The Critical Part) ---
+    // --- 5. Link Extraction (Scanning Mode) ---
     const links: Link[] = [];
+    const directLinks: any[] = [];
 
-    // ExtraFlix usually structures links under headers like "Download 720p"
-    // We will loop through Headers (h3, h4, h5, or strong/p tags that look like headers)
-    const qualityHeaders = contentDiv.find("h3, h4, h5, p > strong, div.wp-block-heading");
-
-    qualityHeaders.each((index, element) => {
-      const headerText = $(element).text().trim();
+    // Strategy: Find ALL anchor tags inside entry-content
+    $(".entry-content a").each((_, element) => {
+      const el = $(element);
+      const href = el.attr("href");
+      const text = el.text().trim();
       
-      // Check if this header indicates a quality/download section
-      // Matches: "480p", "720p", "1080p", "4k", "Download Links"
-      if (headerText.match(/480p|720p|1080p|2160p|4k|download/i)) {
-        
-        // Determine Quality from header
-        const quality = headerText.match(/480p|720p|1080p|2160p|4k/i)?.[0] || "HD";
-        
-        // Find links associated with this header
-        // We look at all siblings until the next header
-        const nextElements = $(element).nextUntil("h3, h4, h5, hr, .wp-block-heading");
-        const buttons = nextElements.find("a");
+      // Validation: Must have href, start with http, and NOT be social media/telegram
+      if (
+        href &&
+        href.startsWith("http") &&
+        !href.includes("telegram") &&
+        !href.includes("whatsapp") &&
+        !href.includes("facebook") &&
+        !href.includes("extraflix.fit/category") // Skip category tags
+      ) {
+        // Check if it's a download link based on keywords or context
+        const isDownloadLink =
+          /Download|Watch|HubCloud|V-Cloud|Drive|GDTOT|GDFlix|Link/i.test(text) ||
+          /hubcloud|hubdrive|drive|gdtot/i.test(href);
 
-        // Handle Series (Episodes) vs Movies (Single Link)
-        if (type === "series") {
-            const directLinks: any[] = [];
-            
-            buttons.each((_, btn) => {
-                const btnText = $(btn).text().trim();
-                const href = $(btn).attr("href");
-                
-                // Valid link check
-                if (href && href.startsWith("http") && !href.includes("telegram") && !href.includes("whatsapp")) {
-                    // For series, buttons are usually "Episode 1", "Ep 2", or "Batch/Zip"
-                    directLinks.push({
-                        title: btnText || `Episode Link`,
-                        link: href,
-                        type: "series" // Adding this to hint it needs extracting
-                    });
-                }
+        if (isDownloadLink) {
+          // Try to find quality from previous headers
+          // Look back at previous siblings to find 480p, 720p etc.
+          let quality = "HD";
+          let context = el.parent().prevAll("h3, h4, h5, p").text() || "";
+          
+          // If parent is not reliable, search closest heading
+          if (!context) {
+             context = el.closest("p, div").prevAll("h3, h4, h5").first().text();
+          }
+
+          if (context.includes("480p")) quality = "480p";
+          else if (context.includes("720p")) quality = "720p";
+          else if (context.includes("1080p")) quality = "1080p";
+          else if (context.includes("4k") || context.includes("2160p")) quality = "4K";
+
+          const linkTitle = text || `Download ${quality}`;
+
+          // Structure for Series
+          if (type === "series") {
+            // For series, we often get "Episode 1", "Episode 2" links or "Batch"
+            // We treat them as direct play links for now
+            directLinks.push({
+              title: `${linkTitle} - ${quality}`,
+              link: href,
+              type: "series",
             });
-
-            if (directLinks.length > 0) {
-                links.push({
-                    title: `${headerText}`, // e.g. "Download Season 1 720p"
-                    quality: quality,
-                    directLinks: directLinks // PolyMovies UI will show these as episodes
-                });
-            }
-
-        } else {
-            // Movie Handling
-            const directLinks: any[] = [];
-            buttons.each((_, btn) => {
-                const btnText = $(btn).text().trim();
-                const href = $(btn).attr("href");
-
-                if (href && href.startsWith("http") && !href.includes("telegram")) {
-                    directLinks.push({
-                        title: btnText || "Watch Movie",
-                        link: href,
-                        type: "movie"
-                    });
-                }
+          } 
+          // Structure for Movies
+          else {
+            links.push({
+              title: `${quality} - ${linkTitle}`,
+              quality: quality,
+              directLinks: [
+                {
+                  title: "Play Movie",
+                  link: href,
+                  type: "movie",
+                },
+              ],
             });
-
-            if (directLinks.length > 0) {
-                links.push({
-                    title: headerText,
-                    quality: quality,
-                    directLinks: directLinks
-                });
-            }
+          }
         }
       }
     });
 
-    // Backup Link Logic: If headers approach fails, look for "wp-block-button" classes directly
-    if (links.length === 0) {
-       $(".wp-block-button__link, .btn").each((_, btn) => {
-           const href = $(btn).attr("href");
-           const text = $(btn).text().trim();
-           if (href && href.startsWith("http") && !href.includes("telegram")) {
-               links.push({
-                   title: text,
-                   quality: "HD",
-                   directLinks: [{ title: text, link: href, type: type === "series" ? "series" : "movie" }]
-               });
-           }
-       });
+    // Post-processing for Series to group them
+    if (type === "series" && directLinks.length > 0) {
+        links.push({
+            title: "Episodes / Download Links",
+            directLinks: directLinks
+        });
     }
+
+    // Deduplicate Links (Optional but good)
+    // Sometimes sites have top and bottom links same
+    const uniqueLinks = links.filter((v, i, a) => a.findIndex(t => t.directLinks?.[0]?.link === v.directLinks?.[0]?.link) === i);
 
     return {
-      title: cleanTitle || title, // Fallback to raw title if clean fails
+      title: title || "Unknown Title",
       synopsis,
       image,
       imdbId: "",
       type,
-      linkList: links,
+      linkList: uniqueLinks,
     };
-
   } catch (err) {
     console.error("ExtraFlix Meta Error:", err);
     return {
