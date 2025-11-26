@@ -270,5 +270,13 @@
     "icon": "",
     "type": "india",
     "disabled": true
+  },
+  {
+    "display_name": "ExtraFlix",
+    "value": "extraflix",
+    "version": "1.0",
+    "icon": "",
+    "type": "india",
+    "disabled": false
   }
 ]
