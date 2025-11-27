@@ -8,7 +8,7 @@ const baseHeaders = {
   "User-Agent": userAgent,
   "Accept": "application/json, text/plain, */*",
   "Content-Type": "application/json",
-  "X-Requested-With": "XMLHttpRequest", // Important for AJAX calls
+  "X-Requested-With": "XMLHttpRequest",
 };
 
 export async function extralinkExtractor(link: string, signal: AbortSignal) {
@@ -16,7 +16,7 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
   try {
     console.log("🚀 Starting ExtraLink Extraction:", link);
 
-    // Step 1: Visit Initial Link (extralink.ink)
+    // Step 1: Visit Initial Link
     const res = await axios.get(link, {
       headers: {
         "User-Agent": userAgent,
@@ -38,14 +38,22 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
        }
     }
 
+    // Fallback to current URL if no link found (axios followed redirect)
+    const finalUrl = res.request?.res?.responseUrl || link;
+
     if (!nextLink || nextLink === "#") {
-      nextLink = res.request?.res?.responseUrl || link;
+      nextLink = finalUrl;
+    }
+
+    // Ensure nextLink is a string
+    if (!nextLink) {
+        console.log("❌ Could not determine next link");
+        return [];
     }
 
     console.log("🔗 Target Page:", nextLink);
 
-    // Step 2: Visit Dotflix Page & CAPTURE COOKIES
-    // IMPORTANT: We must capture cookies here to pass to the API
+    // Step 2: Visit Dotflix Page
     const dotflixRes = await axios.get(nextLink, { 
         headers: { 
             "User-Agent": userAgent,
@@ -57,14 +65,13 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
     // Extract Cookies
     const rawCookies = dotflixRes.headers['set-cookie'];
     const cookie = rawCookies ? rawCookies.map((c: string) => c.split(';')[0]).join('; ') : "";
-    console.log("🍪 Cookies Found:", cookie ? "Yes" : "No");
-
-    const currentUrl = dotflixRes.request?.res?.responseUrl || nextLink;
+    
+    // Safe URL parsing
+    const currentUrl = dotflixRes.request?.res?.responseUrl || nextLink || "";
     const urlObj = new URL(currentUrl);
     const baseUrl = urlObj.origin;
     
     // Robust ID Extraction
-    // URL formats: /share/s/ID or /s/ID or /d/ID
     const pathParts = urlObj.pathname.split('/');
     const fileId = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
 
@@ -75,7 +82,6 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
         return [];
     }
 
-    // Headers for API calls (With Cookies)
     const apiHeaders = {
         ...baseHeaders,
         "Cookie": cookie,
@@ -83,7 +89,7 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
         "Origin": baseUrl,
     };
 
-    // Step 3: API Call 1 (Get Token)
+    // Step 3: API Call 1
     const api1 = `${baseUrl}/api/file/downlaod/`;
     const payload1 = {
       id: fileId,
@@ -91,7 +97,6 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
       captchaValue: null,
     };
 
-    console.log(`📡 Requesting Token from: ${api1}`);
     const tokenRes = await axios.post(api1, payload1, {
       headers: apiHeaders,
       signal,
@@ -101,7 +106,7 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
       const token = tokenRes.data.data;
       console.log("🔑 Token:", token);
 
-      // Step 4: API Call 2 (Get Direct Link)
+      // Step 4: API Call 2
       const api2 = `${baseUrl}/api/file/downlaod2/`;
       const payload2 = {
         id: token,
@@ -109,7 +114,6 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
         captchaValue: null,
       };
 
-      console.log(`📡 Requesting Final Link...`);
       const finalRes = await axios.post(api2, payload2, {
         headers: apiHeaders,
         signal,
@@ -123,25 +127,16 @@ export async function extralinkExtractor(link: string, signal: AbortSignal) {
           server: "ExtraLink VIP",
           link: finalLink,
           type: finalLink.includes(".mp4") ? "mp4" : "mkv",
-          quality: "Original",
+          quality: "1080", // Changed "Original" to "1080" to match Type Definition
           headers: {
              "User-Agent": userAgent,
-             "Referer": baseUrl // Sometimes needed for playback
+             "Referer": baseUrl
           }
         });
-      } else {
-          console.log("❌ API 2 Response Error:", JSON.stringify(finalRes.data));
       }
-    } else {
-        console.log("❌ API 1 Response Error:", JSON.stringify(tokenRes.data));
     }
-
   } catch (err: any) {
     console.error("❌ Extractor Error:", err.message);
-    if (err.response) {
-        console.error("Status:", err.response.status);
-        // console.error("Data:", err.response.data);
-    }
   }
   
   return streams;
