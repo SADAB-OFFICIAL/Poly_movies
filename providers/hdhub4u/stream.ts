@@ -17,36 +17,36 @@ export async function getStream({
     commonHeaders: headers,
   } = providerContext;
   
-  // Destructure the new extractor here
+  // Destructure hubdriveExtractor
   const { hubcloudExtracter, hubdriveExtractor } = extractors;
 
   try {
     let hubdriveLink = "";
 
-    // CASE 1: Link Direct HubDrive hai
+    // Check 1: Direct HubDrive link
     if (link.includes("hubdrive")) {
-      console.log("Direct HubDrive Link Found:", link);
       return await hubdriveExtractor(link, signal);
     } 
     
-    // CASE 2: Link Encrypted hai (HDHub4u standard flow)
+    // Check 2: Decrypt HDHub Link
     else {
       const res = await axios.get(link, { headers, signal });
       const text = res.data;
 
-      // Encryption Bypass Logic
+      // HDHub4u Encryption Logic
       const encryptedString = text.split("s('o','")?.[1]?.split("',180")?.[0];
+      
       if (encryptedString) {
           const decodedString: any = decodeString(encryptedString);
           const decodedLink = atob(decodedString?.o);
           
-          // Redirect Chain Resolve
+          // Resolve Redirects
           const redirectLink = await getRedirectLinks(decodedLink, signal, headers);
           const redirectLinkRes = await axios.get(redirectLink, { headers, signal });
           const redirectLinkText = redirectLinkRes.data;
           const $ = cheerio.load(redirectLinkText);
 
-          // Page se 1080p/HubDrive Link nikalna
+          // Find 1080p or HubDrive Link
           hubdriveLink =
             $('h3:contains("1080p")').find("a").attr("href") ||
             redirectLinkText.match(/href="(https:\/\/hubcloud\.[^\/]+\/drive\/[^"]+)"/)?.[1] || 
@@ -55,22 +55,29 @@ export async function getStream({
       }
     }
 
-    // Agar decoding ke baad HubDrive Link mila
-    if (hubdriveLink && hubdriveLink.includes("hubdrive")) {
-      console.log("Decoded HubDrive Link:", hubdriveLink);
-      return await hubdriveExtractor(hubdriveLink, signal);
-    }
+    // If decrypted link is HubDrive, run extractor
+    if (hubdriveLink && (hubdriveLink.includes("hubdrive") || hubdriveLink.includes("hubcloud"))) {
+      // If it's purely HubDrive space
+      if (hubdriveLink.includes("hubdrive.space")) {
+          return await hubdriveExtractor(hubdriveLink, signal);
+      }
+      
+      // If it redirects to HubCloud/Drive
+      const hubdriveLinkRes = await axios.get(hubdriveLink, { headers, signal });
+      const hubcloudText = hubdriveLinkRes.data;
+      
+      // Check if the page itself has the new download form (HubDrive style)
+      if(hubcloudText.includes('Direct/Instant Download')) {
+          return await hubdriveExtractor(hubdriveLink, signal);
+      }
 
-    // Fallback: Agar HubDrive nahi mila to HubCloud try karega (Old logic backup)
-    if (hubdriveLink) {
-        const hubdriveLinkRes = await axios.get(hubdriveLink, { headers, signal });
-        const hubcloudText = hubdriveLinkRes.data;
-        const hubcloudLink =
+      // Fallback to old HubCloud extractor logic
+      const hubcloudLink =
         hubcloudText.match(
             /<META HTTP-EQUIV="refresh" content="0; url=([^"]+)">/i
         )?.[1] || hubdriveLink;
 
-        return await hubcloudExtracter(hubcloudLink, signal);
+      return await hubcloudExtracter(hubcloudLink, signal);
     }
 
     return [];
@@ -81,7 +88,7 @@ export async function getStream({
   }
 }
 
-// --- Helper Functions (No changes needed here, just copied for full file completeness) ---
+// --- Helper Functions ---
 
 const encode = function (value: string) {
   return btoa(value.toString());
@@ -154,7 +161,6 @@ export async function getRedirectLinks(
     await wait;
 
     let vcloudLink = "Invalid Request";
-    // Simple retry logic
     for(let i=0; i<2; i++){
         const blogRes = await fetch(blogLink, { headers, signal });
         const blogResText = await blogRes.text();
