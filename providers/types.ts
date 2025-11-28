@@ -1,13 +1,12 @@
 import { AxiosStatic } from "axios";
 import * as cheerio from "cheerio";
+import * as Crypto from "react-native-aes-crypto"; // Using the one from your package.json
 
-// Content type for providers (replaces zustand import)
 export interface Content {
   provider: string;
   [key: string]: any;
 }
 
-// getPosts
 export interface Post {
   title: string;
   link: string;
@@ -22,7 +21,6 @@ export type TextTracks = {
   uri: string;
 }[];
 
-// getStream
 export interface Stream {
   server: string;
   link: string;
@@ -32,7 +30,6 @@ export interface Stream {
   headers?: any;
 }
 
-// getInfo
 export interface Info {
   title: string;
   image: string;
@@ -44,7 +41,7 @@ export interface Info {
   rating?: string;
   linkList: Link[];
 }
-// getEpisodeLinks
+
 export interface EpisodeLink {
   title: string;
   link: string;
@@ -61,7 +58,6 @@ export interface Link {
   }[];
 }
 
-// catalog
 export interface Catalog {
   title: string;
   filter: string;
@@ -131,7 +127,7 @@ export interface ProviderType {
 
 export type ProviderContext = {
   axios: AxiosStatic;
-  Aes: any; // AES encryption utility, if used
+  Aes: any;
   getBaseUrl: (providerValue: string) => Promise<string>;
   commonHeaders: Record<string, string>;
   cheerio: typeof cheerio;
@@ -139,6 +135,7 @@ export type ProviderContext = {
     hubcloudExtracter: (link: string, signal: AbortSignal) => Promise<Stream[]>;
     superVideoExtractor: (data: any) => Promise<string>;
     gdFlixExtracter: (link: string, signal: AbortSignal) => Promise<Stream[]>;
-    extralinkExtractor: (link: string, signal: AbortSignal) => Promise<Stream[]>;
+    // 👇 This was missing, added now
+    hubdriveExtractor: (link: string, signal: AbortSignal) => Promise<Stream[]>;
   };
 };
