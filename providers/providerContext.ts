@@ -6,19 +6,17 @@ import { hubcloudExtracter } from "./hubcloudExtractor";
 import { superVideoExtractor } from "./superVideoExtractor";
 import { gdFlixExtracter } from "./gdflixExtractor";
 import { extralinkExtractor } from "./extralinkExtractor";
+// 👇 Import New Extractor
+import { hubdriveExtractor } from "./hubdriveExtractor"; 
 import { ProviderContext } from "./types";
 import Aes from "react-native-aes-crypto";
-
-/**
- * Context for provider functions.
- * This context is used to pass common dependencies to provider functions.
- */
 
 const extractors = {
   hubcloudExtracter,
   superVideoExtractor,
   gdFlixExtracter,
   extralinkExtractor,
+  hubdriveExtractor, // 👇 Register Here
 };
 
 export const providerContext: ProviderContext = {
