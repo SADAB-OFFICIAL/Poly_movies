@@ -5,9 +5,7 @@ import * as cheerio from "cheerio";
 import { hubcloudExtracter } from "./hubcloudExtractor";
 import { superVideoExtractor } from "./superVideoExtractor";
 import { gdFlixExtracter } from "./gdflixExtractor";
-import { extralinkExtractor } from "./extralinkExtractor";
-// 👇 Import New Extractor
-import { hubdriveExtractor } from "./hubdriveExtractor"; 
+import { hubdriveExtractor } from "./hubdriveExtractor"; // Import
 import { ProviderContext } from "./types";
 import Aes from "react-native-aes-crypto";
 
@@ -15,8 +13,7 @@ const extractors = {
   hubcloudExtracter,
   superVideoExtractor,
   gdFlixExtracter,
-  extralinkExtractor,
-  hubdriveExtractor, // 👇 Register Here
+  hubdriveExtractor, // Register
 };
 
 export const providerContext: ProviderContext = {
