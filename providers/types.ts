@@ -1,6 +1,5 @@
 import { AxiosStatic } from "axios";
 import * as cheerio from "cheerio";
-import * as Crypto from "react-native-aes-crypto"; // Using the one from your package.json
 
 export interface Content {
   provider: string;
@@ -135,7 +134,5 @@ export type ProviderContext = {
     hubcloudExtracter: (link: string, signal: AbortSignal) => Promise<Stream[]>;
     superVideoExtractor: (data: any) => Promise<string>;
     gdFlixExtracter: (link: string, signal: AbortSignal) => Promise<Stream[]>;
-    // 👇 This was missing, added now
-    hubdriveExtractor: (link: string, signal: AbortSignal) => Promise<Stream[]>;
   };
 };
