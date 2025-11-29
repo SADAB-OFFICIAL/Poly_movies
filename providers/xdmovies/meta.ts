@@ -38,7 +38,8 @@ export const getMeta = async function ({
 
     // --- 3. Type Detection ---
     const isSeries = /season|episode|web series/i.test(rawTitle) || /show/i.test($(".cat-links").text());
-    const type = isSeries ? "series" : "movie";
+    // Explicitly typing this for TypeScript
+    const type: "movie" | "series" = isSeries ? "series" : "movie";
 
     // --- 4. Synopsis Extraction ---
     let synopsis = "";
@@ -62,10 +63,7 @@ export const getMeta = async function ({
     const links: Link[] = [];
     const directLinks: any[] = [];
 
-    // Loop through headings/paragraphs to find download sections
-    // Similar structure to ExtraFlix
     $(".wp-block-columns, .entry-content > p, .entry-content > div").each((_, container) => {
-        // Find quality text nearby
         let quality = "HD";
         const textContent = $(container).text();
         if (textContent.includes("480p")) quality = "480p";
@@ -73,12 +71,10 @@ export const getMeta = async function ({
         else if (textContent.includes("1080p")) quality = "1080p";
         else if (textContent.includes("4k") || textContent.includes("2160p")) quality = "4K";
 
-        // Find buttons in this block
         $(container).find("a").each((_, btn) => {
             const btnText = $(btn).text().trim();
             const href = $(btn).attr("href");
 
-            // Check if valid download link
             if (href && href.startsWith("http") && !href.includes("telegram")) {
                 if (
                     btnText.toLowerCase().includes("download") || 
@@ -90,7 +86,7 @@ export const getMeta = async function ({
                     const linkObj = {
                         title: btnText || "Download Link",
                         link: href,
-                        type: type === "series" ? "series" : "movie"
+                        type: type // Now properly typed
                     };
 
                     if (type === "series") {
@@ -107,7 +103,6 @@ export const getMeta = async function ({
         });
     });
     
-    // Group series links
     if (type === "series" && directLinks.length > 0) {
         links.push({
             title: "Episodes / Download Links",
@@ -115,7 +110,6 @@ export const getMeta = async function ({
         });
     }
 
-    // Deduplicate
     const uniqueLinks = links.filter((v, i, a) => a.findIndex(t => t.directLinks?.[0]?.link === v.directLinks?.[0]?.link) === i);
 
     return {
