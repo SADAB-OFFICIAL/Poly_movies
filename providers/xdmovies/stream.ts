@@ -17,15 +17,12 @@ export const getStream = async function ({
   providerContext: ProviderContext;
 }): Promise<Stream[]> {
   const { extractors, axios, cheerio } = providerContext;
-  const { hubcloudExtracter, gdFlixExtracter, extralinkExtractor } = extractors;
+  const { hubcloudExtracter, gdFlixExtracter } = extractors;
 
   try {
-    console.log("XDMovies Stream Link:", link);
+    console.log("Stream Processing:", link);
 
     // 1. Direct Supported Links
-    if (link.includes("extralink.ink") || link.includes("dotflix.cfd") || link.includes("new3.extralink")) {
-        return await extralinkExtractor(link, signal);
-    }
     if (link.includes("hubcloud") || link.includes("hubdrive")) {
       return await hubcloudExtracter(link, signal);
     }
@@ -33,24 +30,22 @@ export const getStream = async function ({
       return await gdFlixExtracter(link, signal);
     }
 
-    // 2. Resolve Redirects if needed
+    // 2. If it's a landing page (Redirection)
     const res = await axios.get(link, { headers, signal });
     const $ = cheerio.load(res.data);
 
+    // Sirf HubCloud/V-Cloud/GDFlix buttons ko dhundo
+    // "Instant Download" ya "ExtraLink" ko ignore kar rahe hain
     let targetLink = 
         $('a:contains("HubCloud")').attr('href') || 
         $('a:contains("V-Cloud")').attr('href') ||
-        $('a:contains("Download Link")').attr('href') ||
-        $('.btn-success').attr('href') ||
-        $('a:contains("Generate Download Link")').attr('href');
+        $('a:contains("Drive")').attr('href') ||
+        $('.btn-success').attr('href');
 
     if (targetLink) {
-      console.log("XDMovies Resolved Target:", targetLink);
+      console.log("Found Target:", targetLink);
       
-      if (targetLink.includes("extralink") || targetLink.includes("dotflix")) {
-          return await extralinkExtractor(targetLink, signal);
-      }
-      if (targetLink.includes("hubcloud")) {
+      if (targetLink.includes("hubcloud") || targetLink.includes("hubdrive")) {
         return await hubcloudExtracter(targetLink, signal);
       }
       if (targetLink.includes("gdflix")) {
@@ -58,10 +53,11 @@ export const getStream = async function ({
       }
     }
 
+    // Fallback
     return await hubcloudExtracter(targetLink || link, signal);
 
   } catch (err) {
-    console.error("XDMovies Stream Error:", err);
+    console.error("Stream Error:", err);
     return [];
   }
 };
