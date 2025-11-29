@@ -2,17 +2,12 @@ import { Post, ProviderContext } from "../types";
 
 const BASE_URL = "https://xdmovies.site";
 
+// 8man Proxy URL
+const PROXY_URL = "https://c.8man.workers.dev/?url=";
+
 const headers = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.5",
-  "Referer": "https://www.google.com/",
-  "Upgrade-Insecure-Requests": "1",
-  "Sec-Fetch-Dest": "document",
-  "Sec-Fetch-Mode": "navigate",
-  "Sec-Fetch-Site": "none",
-  "Sec-Fetch-User": "?1",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
 };
 
 export const getPosts = async function ({
@@ -27,10 +22,14 @@ export const getPosts = async function ({
   signal: AbortSignal;
   providerContext: ProviderContext;
 }): Promise<Post[]> {
-  const url = filter
+  const targetUrl = filter
     ? `${BASE_URL}${filter}/page/${page}/`
     : `${BASE_URL}/page/${page}/`;
 
+  // Proxy ke through request bhejein
+  const url = `${PROXY_URL}${encodeURIComponent(targetUrl)}`;
+
+  console.log(`[XDMovies] Fetching via Proxy: ${url}`);
   return fetchPosts({ url, signal, providerContext });
 };
 
@@ -46,7 +45,11 @@ export const getSearchPosts = async function ({
   signal: AbortSignal;
   providerContext: ProviderContext;
 }): Promise<Post[]> {
-  const url = `${BASE_URL}/page/${page}/?s=${encodeURIComponent(searchQuery)}`;
+  const targetUrl = `${BASE_URL}/page/${page}/?s=${encodeURIComponent(searchQuery)}`;
+  
+  // Search me bhi Proxy use karein
+  const url = `${PROXY_URL}${encodeURIComponent(targetUrl)}`;
+  
   return fetchPosts({ url, signal, providerContext });
 };
 
@@ -60,61 +63,48 @@ async function fetchPosts({
   providerContext: ProviderContext;
 }): Promise<Post[]> {
   try {
-    console.log(`[XDMovies] Requesting: ${url}`);
-
-    const { cheerio } = providerContext;
+    const { axios, cheerio } = providerContext;
     
-    // Using fetch instead of axios for better header control
-    const res = await fetch(url, { headers, signal });
-    const html = await res.text();
+    // Note: Proxy use karte waqt headers simple rakhein
+    const res = await axios.get(url, { 
+        headers: {
+            "User-Agent": headers["User-Agent"] 
+        }, 
+        signal 
+    });
     
+    const html = res.data;
     const $ = cheerio.load(html);
-    
-    // DEBUGGING: Log the page title to check if we are blocked
-    const pageTitle = $("title").text().trim();
-    console.log(`[XDMovies] Page Title Received: "${pageTitle}"`);
-
-    if (pageTitle.includes("Just a moment") || pageTitle.includes("Access denied") || pageTitle.includes("Cloudflare")) {
-        console.error("[XDMovies] 🚨 BLOCKED BY CLOUDFLARE. API cannot scrape this site directly.");
-        return [];
-    }
-
     const catalog: Post[] = [];
 
-    // Selectors List (Most likely ones first)
-    const selectors = [
-        "article", 
-        ".post-item", 
-        ".item-list", 
-        ".movies-list .item", 
-        ".result-item",
-        ".latestPost"
-    ];
+    // Debugging: Title check karein
+    const pageTitle = $("title").text().trim();
+    console.log(`[XDMovies] Page Title: "${pageTitle}"`);
 
-    const items = $(selectors.join(", "));
-    console.log(`[XDMovies] Items found: ${items.length}`);
-
-    items.each((_, element) => {
+    $("article, .post-item, .item").each((_, element) => {
       const el = $(element);
       
-      // Title
       const titleElement = el.find("h2 a, h3 a, .title a").first();
       let title = titleElement.text().trim();
-      // Fallback title from image alt
+      
+      // Fallback title
       if (!title) title = el.find("img").attr("alt") || "";
+
+      // Clean Title
+      title = title.replace(/^Download\s*/i, "").trim();
+
+      let link = titleElement.attr("href") || el.find("a").first().attr("href");
       
-      // Link
-      const link = titleElement.attr("href") || el.find("a").attr("href");
-      
-      // Image
       let image = 
         el.find("img").attr("data-src") || 
         el.find("img").attr("src") || 
         el.find("img").attr("data-lazy-src") || 
         "";
 
-      // Clean Title
-      title = title.replace(/^Download\s*/i, "").trim();
+      // Image URL fix (Agar relative ho)
+      if (image && !image.startsWith("http")) {
+           image = image.startsWith("//") ? `https:${image}` : image;
+      }
 
       if (title && link) {
         catalog.push({
@@ -125,7 +115,9 @@ async function fetchPosts({
       }
     });
 
+    console.log(`[XDMovies] Found ${catalog.length} items`);
     return catalog;
+
   } catch (err: any) {
     console.error("[XDMovies] Error:", err.message);
     return [];
