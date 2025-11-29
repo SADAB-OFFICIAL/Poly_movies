@@ -278,5 +278,13 @@
     "icon": "",
     "type": "india",
     "disabled": false
+  },
+  {
+    "display_name": "XDMovies",
+    "value": "xdmovies",
+    "version": "1.0",
+    "icon": "",
+    "type": "india",
+    "disabled": false
   }
 ]
