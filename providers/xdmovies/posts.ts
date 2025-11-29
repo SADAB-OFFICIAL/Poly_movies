@@ -1,14 +1,19 @@
 import { Post, ProviderContext } from "../types";
 
+const BASE_URL = "https://xdmovies.site";
+
 const headers = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Referer": "https://google.com",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Referer": "https://www.google.com/",
+  "Upgrade-Insecure-Requests": "1",
+  "Sec-Fetch-Dest": "document",
+  "Sec-Fetch-Mode": "navigate",
+  "Sec-Fetch-Site": "none",
+  "Sec-Fetch-User": "?1",
 };
-
-const BASE_URL = "https://xdmovies.site";
 
 export const getPosts = async function ({
   filter,
@@ -26,7 +31,6 @@ export const getPosts = async function ({
     ? `${BASE_URL}${filter}/page/${page}/`
     : `${BASE_URL}/page/${page}/`;
 
-  console.log(`[XDMovies] Fetching Posts: ${url}`);
   return fetchPosts({ url, signal, providerContext });
 };
 
@@ -43,7 +47,6 @@ export const getSearchPosts = async function ({
   providerContext: ProviderContext;
 }): Promise<Post[]> {
   const url = `${BASE_URL}/page/${page}/?s=${encodeURIComponent(searchQuery)}`;
-  console.log(`[XDMovies] Search: ${url}`);
   return fetchPosts({ url, signal, providerContext });
 };
 
@@ -57,51 +60,61 @@ async function fetchPosts({
   providerContext: ProviderContext;
 }): Promise<Post[]> {
   try {
-    const { axios, cheerio } = providerContext;
-    const res = await axios.get(url, { headers, signal });
-    const html = res.data;
+    console.log(`[XDMovies] Requesting: ${url}`);
+
+    const { cheerio } = providerContext;
     
-    // Debugging: Check if we got valid HTML
-    // console.log("[XDMovies] HTML Length:", html.length);
+    // Using fetch instead of axios for better header control
+    const res = await fetch(url, { headers, signal });
+    const html = await res.text();
     
     const $ = cheerio.load(html);
+    
+    // DEBUGGING: Log the page title to check if we are blocked
+    const pageTitle = $("title").text().trim();
+    console.log(`[XDMovies] Page Title Received: "${pageTitle}"`);
+
+    if (pageTitle.includes("Just a moment") || pageTitle.includes("Access denied") || pageTitle.includes("Cloudflare")) {
+        console.error("[XDMovies] 🚨 BLOCKED BY CLOUDFLARE. API cannot scrape this site directly.");
+        return [];
+    }
+
     const catalog: Post[] = [];
 
-    // Multiple strategies to find posts
-    // 1. Standard Article tags
-    // 2. Divs with class 'post-item' or 'result-item'
-    // 3. Generic grid items
-    
-    const items = $("article, .post-item, .item, .result-item, .movies-list .movie");
+    // Selectors List (Most likely ones first)
+    const selectors = [
+        "article", 
+        ".post-item", 
+        ".item-list", 
+        ".movies-list .item", 
+        ".result-item",
+        ".latestPost"
+    ];
 
-    console.log(`[XDMovies] Found ${items.length} potential items`);
+    const items = $(selectors.join(", "));
+    console.log(`[XDMovies] Items found: ${items.length}`);
 
     items.each((_, element) => {
       const el = $(element);
       
-      // Try to find title in multiple common locations
-      const titleEl = el.find("h2.entry-title a, h3.entry-title a, .post-title a, .title a").first();
-      
-      let title = titleEl.text().trim();
-      // Fallback: Try Getting title from Image alt tag
+      // Title
+      const titleElement = el.find("h2 a, h3 a, .title a").first();
+      let title = titleElement.text().trim();
+      // Fallback title from image alt
       if (!title) title = el.find("img").attr("alt") || "";
-
-      // Cleaning title
-      title = title.replace(/^Download\s*/i, "").trim();
-
-      let link = titleEl.attr("href") || el.find("a").first().attr("href");
       
-      // Image extraction (Lazy load handling)
+      // Link
+      const link = titleElement.attr("href") || el.find("a").attr("href");
+      
+      // Image
       let image = 
         el.find("img").attr("data-src") || 
         el.find("img").attr("src") || 
         el.find("img").attr("data-lazy-src") || 
         "";
-        
-      // Fix relative URLs
-      if (image && !image.startsWith("http")) {
-          image = image.startsWith("//") ? `https:${image}` : `${BASE_URL}${image}`;
-      }
+
+      // Clean Title
+      title = title.replace(/^Download\s*/i, "").trim();
 
       if (title && link) {
         catalog.push({
@@ -112,15 +125,9 @@ async function fetchPosts({
       }
     });
 
-    console.log(`[XDMovies] Successfully extracted ${catalog.length} posts`);
     return catalog;
-
   } catch (err: any) {
-    console.error(`[XDMovies] Error: ${err.message}`);
-    // Check if it's a Cloudflare issue
-    if (err.response && (err.response.status === 403 || err.response.status === 503)) {
-        console.error("[XDMovies] Likely blocked by Cloudflare. Try rotating User-Agent.");
-    }
+    console.error("[XDMovies] Error:", err.message);
     return [];
   }
 }
