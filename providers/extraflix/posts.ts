@@ -1,6 +1,6 @@
 import { Post, ProviderContext } from "../types";
 
-const BASE_URL = "https://extraflix.fit";
+const BASE_URL = "https://extraflix.one/";
 
 const headers = {
   "User-Agent":
